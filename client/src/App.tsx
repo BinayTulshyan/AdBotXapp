@@ -9,6 +9,7 @@ import Suggestions from "@/pages/suggestions";
 import Performance from "@/pages/performance";
 import Settings from "@/pages/settings";
 import AppShell from "@/components/layout/AppShell";
+import LoginForm from "@/components/auth/LoginForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import { User } from "@/types";
 
@@ -57,11 +58,7 @@ function App() {
     <Switch>
       <Route path="/login">
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-          {/* Login form would go here */}
-          <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
-            <h1 className="text-2xl font-bold text-center mb-6">Log in to Adsy</h1>
-            {/* Login form content */}
-          </div>
+          <LoginForm />
         </div>
       </Route>
       <Route path="/onboarding">
