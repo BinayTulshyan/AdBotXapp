@@ -18,6 +18,7 @@ declare module "express-session" {
     userId: number;
     username: string;
     businessName: string;
+    metaAccessToken?: string;
   }
 }
 
@@ -151,6 +152,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Meta Ad Account routes
+  
+  // Get Meta login URL for OAuth
+  app.get("/api/meta/auth-url", isAuthenticated, (req: Request, res: Response) => {
+    try {
+      const authUrl = metaAdsAPI.getAuthUrl();
+      res.status(200).json({ authUrl });
+    } catch (error) {
+      console.error("Error generating Meta auth URL:", error);
+      res.status(500).json({ message: "Failed to generate Meta auth URL" });
+    }
+  });
+
+  // OAuth callback handler
+  app.get("/api/meta/oauth-callback", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.query;
+      
+      if (!code || typeof code !== 'string') {
+        return res.status(400).json({ message: "Authorization code is required" });
+      }
+      
+      // Exchange code for token
+      const oauthData = await metaAdsAPI.handleOAuthCallback(code);
+      
+      if (!oauthData) {
+        return res.status(400).json({ message: "Failed to authenticate with Meta" });
+      }
+      
+      // Store token in session
+      if (req.session) {
+        req.session.metaAccessToken = oauthData.access_token;
+      }
+      
+      // Redirect to onboarding or dashboard
+      if (req.session && req.session.userId) {
+        const user = await storage.getUser(req.session.userId);
+        const redirectPath = user?.onboardingComplete ? '/dashboard' : '/onboarding';
+        
+        // Close the OAuth popup and redirect the main window
+        res.send(`
+          <html>
+          <head>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'META_AUTH_SUCCESS' }, '*');
+                window.close();
+              } else {
+                window.location.href = '${redirectPath}';
+              }
+            </script>
+          </head>
+          <body>
+            <p>Authentication successful! You can close this window.</p>
+          </body>
+          </html>
+        `);
+      } else {
+        res.redirect('/login');
+      }
+    } catch (error) {
+      console.error("Error handling Meta OAuth callback:", error);
+      res.status(500).send(`
+        <html>
+        <body>
+          <h2>Authentication Error</h2>
+          <p>Failed to authenticate with Meta. Please try again.</p>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ type: 'META_AUTH_ERROR' }, '*');
+              setTimeout(() => window.close(), 3000);
+            } else {
+              setTimeout(() => window.location.href = '/login', 3000);
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    }
+  });
+  
   app.post("/api/meta/connect", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { accountId } = req.body;
