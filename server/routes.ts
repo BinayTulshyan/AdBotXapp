@@ -25,6 +25,9 @@ declare module "express-session" {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
+  // Log current users in storage at startup
+  console.log("Current users in storage at startup:", Array.from((storage as any).users.entries()));
+  
   const SessionStore = MemoryStore(session);
   app.use(
     session({
@@ -52,8 +55,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userInput = insertUserSchema.parse(req.body);
       
+      console.log("Registration attempt with username:", userInput.username);
+      
       // Check if user already exists
       const existingUser = await storage.getUserByUsername(userInput.username);
+      console.log("Existing user check result:", existingUser);
+      
       if (existingUser) {
         return res.status(400).json({ message: "Username already exists" });
       }
