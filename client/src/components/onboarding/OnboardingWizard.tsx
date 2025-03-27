@@ -1,563 +1,291 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle, 
-  CardDescription 
-} from "@/components/ui/card";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { z } from "zod";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { User, OnboardingStep, MetaAccountFormData, AdObjectiveFormData } from "@/types";
-import { apiRequest } from "@/lib/queryClient";
-import { queryClient } from "@/lib/queryClient";
+import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { useQueryClient } from "@tanstack/react-query";
+import { MetaAccountSetup } from "@/components/meta";
+import { useLocation } from "wouter";
 
-const connectFormSchema = z.object({
-  accountId: z.string().optional(),
-  businessName: z.string().optional(),
-  email: z.string().email().optional(),
-  country: z.string().optional(),
-  currency: z.string().optional(),
-  timezone: z.string().optional(),
+// Step 1: Business Objective
+const objectiveSchema = z.object({
+  objective: z.string().min(1, "Please select an objective"),
+  description: z.string().min(10, "Please provide more details about your objective").max(500, "Description is too long"),
+  targetAudience: z.string().min(10, "Please provide more details about your target audience").max(500, "Target audience description is too long"),
+  budget: z.string().min(1, "Please enter your budget"),
+  duration: z.string().min(1, "Please select a duration"),
 });
 
-const objectiveFormSchema = z.object({
-  objective: z.string().min(1, "Objective is required"),
-  description: z.string().min(10, "Please provide a detailed description"),
-  targetAudience: z.string().min(5, "Target audience is required"),
-  budget: z.string().min(1, "Budget is required"),
-  duration: z.string().min(1, "Duration is required"),
-});
+type ObjectiveFormValues = z.infer<typeof objectiveSchema>;
 
-export default function OnboardingWizard() {
-  const [step, setStep] = useState<OnboardingStep>("connect");
-  const [connectMethod, setConnectMethod] = useState<"existing" | "new" | null>(null);
-  const [, setLocation] = useLocation();
+// Step 2: Meta Account Setup
+// (uses MetaAccountSetup component)
+
+// Main Onboarding Wizard Component
+export function OnboardingWizard() {
+  const [step, setStep] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [objectiveData, setObjectiveData] = useState<ObjectiveFormValues | null>(null);
   const { toast } = useToast();
-
-  const { data: user } = useQuery<User>({
-    queryKey: ["/api/auth/me"],
-  });
-
-  // Form for connecting Meta account
-  const connectForm = useForm<MetaAccountFormData>({
-    resolver: zodResolver(connectFormSchema),
-    defaultValues: {
-      businessName: user?.businessName || "",
-      email: user?.email || "",
-      country: "US",
-      currency: "USD",
-      timezone: "America/New_York",
-    },
-  });
-
-  // Form for setting ad objectives
-  const objectiveForm = useForm<AdObjectiveFormData>({
-    resolver: zodResolver(objectiveFormSchema),
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+  
+  const objectiveForm = useForm<ObjectiveFormValues>({
+    resolver: zodResolver(objectiveSchema),
     defaultValues: {
       objective: "",
       description: "",
       targetAudience: "",
-      budget: "$50",
-      duration: "30 days",
-    },
-  });
-
-  // Connect to existing Meta Ad account
-  const { mutate: connectToExisting, isPending: connectingToExisting } = useMutation({
-    mutationFn: async (data: { accountId: string }) => {
-      return apiRequest("POST", "/api/meta/connect", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      setStep("objectives");
-      toast({
-        title: "Connected successfully",
-        description: "Your Meta Ad account has been connected.",
-        duration: 3000,
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Connection failed",
-        description: "Failed to connect to Meta Ad account. Please try again.",
-        variant: "destructive",
-        duration: 3000,
-      });
+      budget: "",
+      duration: "",
     }
   });
 
-  // Create new Meta Ad account
-  const { mutate: createNewAccount, isPending: creatingAccount } = useMutation({
-    mutationFn: async (data: MetaAccountFormData) => {
-      return apiRequest("POST", "/api/meta/create-account", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      setStep("objectives");
-      toast({
-        title: "Account created",
-        description: "Your Meta Ad account has been created successfully.",
-        duration: 3000,
+  const handleObjectiveSubmit = async (values: ObjectiveFormValues) => {
+    try {
+      setIsLoading(true);
+      
+      // Save the form data
+      setObjectiveData(values);
+      
+      // Submit to API
+      await apiRequest("/api/objectives", {
+        method: "POST",
+        body: JSON.stringify(values)
       });
-    },
-    onError: () => {
+      
       toast({
-        title: "Account creation failed",
-        description: "Failed to create Meta Ad account. Please try again.",
+        title: "Business objective saved",
+        description: "Now let's connect your Meta Ads account",
+      });
+      
+      // Move to next step
+      setStep(2);
+    } catch (error) {
+      console.error("Error saving objective:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save business objective. Please try again.",
         variant: "destructive",
-        duration: 3000,
       });
-    }
-  });
-
-  // Create ad objective
-  const { mutate: createObjective, isPending: creatingObjective } = useMutation({
-    mutationFn: async (data: AdObjectiveFormData) => {
-      return apiRequest("POST", "/api/objectives", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      setStep("setup");
-      toast({
-        title: "Objective saved",
-        description: "Your ad objective has been saved successfully.",
-        duration: 3000,
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Failed to save objective",
-        description: "An error occurred while saving your objective. Please try again.",
-        variant: "destructive",
-        duration: 3000,
-      });
-    }
-  });
-
-  // Complete onboarding
-  const { mutate: completeOnboarding, isPending: completingOnboarding } = useMutation({
-    mutationFn: async () => {
-      return apiRequest("PATCH", "/api/user/onboarding", { onboardingComplete: true });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      setLocation("/dashboard");
-      toast({
-        title: "Onboarding complete",
-        description: "You're all set! Welcome to Adsy.",
-        duration: 3000,
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Failed to complete onboarding",
-        description: "An error occurred. Please try again.",
-        variant: "destructive",
-        duration: 3000,
-      });
-    }
-  });
-
-  const handleConnectFormSubmit = (data: MetaAccountFormData) => {
-    if (connectMethod === "existing" && data.accountId) {
-      connectToExisting({ accountId: data.accountId });
-    } else if (connectMethod === "new") {
-      createNewAccount(data);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleObjectiveFormSubmit = (data: AdObjectiveFormData) => {
-    createObjective(data);
-  };
-
-  const handleSetupComplete = () => {
-    completeOnboarding();
+  const handleMetaAccountSetupSuccess = () => {
+    // Invalidate user data
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    
+    toast({
+      title: "Onboarding complete!",
+      description: "You're all set to start managing your ads.",
+    });
+    
+    // Redirect to dashboard
+    setLocation("/dashboard");
   };
 
   return (
-    <Card className="max-w-3xl mx-auto">
-      <CardHeader>
-        <CardTitle className="text-2xl">Welcome to Adsy</CardTitle>
-        <CardDescription>
-          Let's get your Meta ad campaigns set up for success
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {/* Stepper */}
-        <div className="mb-8">
-          <div className="flex items-center">
-            <div className="flex items-center relative">
-              <div className={`w-10 h-10 flex items-center justify-center rounded-full ${
-                step === "connect" ? "bg-primary text-white" : 
-                "bg-gray-200 text-gray-600"
-              } font-medium`}>1</div>
-              <div className="ml-4 mr-8">
-                <p className={`text-sm font-medium ${
-                  step === "connect" ? "text-gray-900" : "text-gray-600"
-                }`}>Connect</p>
-              </div>
-              <div className={`flex-1 h-1 ${
-                step === "connect" ? "bg-gray-200" : "bg-primary"
-              }`}></div>
-            </div>
-            <div className="flex items-center relative">
-              <div className={`w-10 h-10 flex items-center justify-center rounded-full ${
-                step === "objectives" ? "bg-primary text-white" : 
-                step === "setup" ? "bg-primary text-white" :
-                "bg-gray-200 text-gray-600"
-              } font-medium`}>2</div>
-              <div className="ml-4 mr-8">
-                <p className={`text-sm font-medium ${
-                  step === "objectives" ? "text-gray-900" : 
-                  step === "setup" ? "text-gray-900" :
-                  "text-gray-600"
-                }`}>Objectives</p>
-              </div>
-              <div className={`flex-1 h-1 ${
-                step === "setup" ? "bg-primary" : "bg-gray-200"
-              }`}></div>
-            </div>
-            <div className="flex items-center">
-              <div className={`w-10 h-10 flex items-center justify-center rounded-full ${
-                step === "setup" ? "bg-primary text-white" : "bg-gray-200 text-gray-600"
-              } font-medium`}>3</div>
-              <div className="ml-4">
-                <p className={`text-sm font-medium ${
-                  step === "setup" ? "text-gray-900" : "text-gray-600"
-                }`}>Setup</p>
-              </div>
-            </div>
-          </div>
+    <div className="container max-w-4xl mx-auto py-10">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-2">Welcome to Adsy</h1>
+        <p className="text-muted-foreground">Let's get your account set up in just a few steps.</p>
+        
+        <div className="flex items-center mt-6">
+          <div className={`h-2 w-1/2 rounded-l-full ${step >= 1 ? 'bg-primary' : 'bg-muted'}`}></div>
+          <div className={`h-2 w-1/2 rounded-r-full ${step >= 2 ? 'bg-primary' : 'bg-muted'}`}></div>
         </div>
-        
-        {/* Step content */}
-        {step === "connect" && (
-          <div className="bg-gray-50 p-6 rounded-lg">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Connect your Meta Ad Account</h3>
-            <p className="text-gray-600 mb-6">Connect your existing Meta Ad account or let us create a new one for you.</p>
-            
-            {!connectMethod ? (
-              <div className="flex flex-col space-y-4">
-                <Button
-                  className="w-full py-6 bg-blue-600 hover:bg-blue-700"
-                  onClick={() => setConnectMethod("existing")}
-                >
-                  <span className="material-icons mr-2">link</span>
-                  Connect Existing Account
-                </Button>
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-gray-50 text-gray-500">OR</span>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full py-6"
-                  onClick={() => setConnectMethod("new")}
-                >
-                  <span className="material-icons mr-2">add_circle</span>
-                  Create New Ad Account
-                </Button>
-              </div>
-            ) : (
-              <Form {...connectForm}>
-                <form onSubmit={connectForm.handleSubmit(handleConnectFormSubmit)} className="space-y-4">
-                  {connectMethod === "existing" ? (
-                    <FormField
-                      control={connectForm.control}
-                      name="accountId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Meta Ad Account ID</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter your Meta Ad Account ID" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ) : (
-                    <>
-                      <FormField
-                        control={connectForm.control}
-                        name="businessName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Business Name</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Your business name" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={connectForm.control}
-                        name="email"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Business Email</FormLabel>
-                            <FormControl>
-                              <Input placeholder="your@email.com" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <FormField
-                          control={connectForm.control}
-                          name="country"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Country</FormLabel>
-                              <FormControl>
-                                <Input placeholder="US" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={connectForm.control}
-                          name="currency"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Currency</FormLabel>
-                              <FormControl>
-                                <Input placeholder="USD" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={connectForm.control}
-                          name="timezone"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Timezone</FormLabel>
-                              <FormControl>
-                                <Input placeholder="America/New_York" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </>
-                  )}
-                  <div className="pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="mr-2"
-                      onClick={() => setConnectMethod(null)}
-                    >
-                      Back
-                    </Button>
-                    <Button 
-                      type="submit"
-                      disabled={connectingToExisting || creatingAccount}
-                    >
-                      {connectingToExisting || creatingAccount
-                        ? "Processing..."
-                        : "Continue"}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            )}
-          </div>
-        )}
-        
-        {step === "objectives" && (
-          <div className="bg-gray-50 p-6 rounded-lg">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Define Your Ad Objectives</h3>
-            <p className="text-gray-600 mb-6">Tell us what you want to achieve with your Meta ads.</p>
-            
+        <div className="flex justify-between text-sm mt-1">
+          <span className={step >= 1 ? 'text-primary font-medium' : 'text-muted-foreground'}>Business Objective</span>
+          <span className={step >= 2 ? 'text-primary font-medium' : 'text-muted-foreground'}>Meta Account</span>
+        </div>
+      </div>
+      
+      {step === 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Tell us about your advertising goals</CardTitle>
+            <CardDescription>
+              This information will help us provide tailored ad suggestions and optimization recommendations.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <Form {...objectiveForm}>
-              <form onSubmit={objectiveForm.handleSubmit(handleObjectiveFormSubmit)} className="space-y-4">
+              <form onSubmit={objectiveForm.handleSubmit(handleObjectiveSubmit)} className="space-y-6">
                 <FormField
                   control={objectiveForm.control}
                   name="objective"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Campaign Objective</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Increase website traffic, Boost product sales" {...field} />
-                      </FormControl>
+                      <FormLabel>What's your primary advertising objective?</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select an objective" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="BRAND_AWARENESS">Brand Awareness</SelectItem>
+                          <SelectItem value="TRAFFIC">Website Traffic</SelectItem>
+                          <SelectItem value="ENGAGEMENT">Post Engagement</SelectItem>
+                          <SelectItem value="LEAD_GENERATION">Lead Generation</SelectItem>
+                          <SelectItem value="CONVERSIONS">Conversions</SelectItem>
+                          <SelectItem value="APP_INSTALLS">App Installs</SelectItem>
+                          <SelectItem value="VIDEO_VIEWS">Video Views</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        This helps us determine the best type of ads to create for your campaigns.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                
                 <FormField
                   control={objectiveForm.control}
                   name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Detailed Description</FormLabel>
+                      <FormLabel>Describe your business and what you're promoting</FormLabel>
                       <FormControl>
                         <Textarea 
-                          placeholder="Describe your business goals in detail" 
-                          className="min-h-24"
+                          placeholder="e.g., We're an online boutique launching a summer collection featuring sustainable clothing for women aged 25-40..." 
                           {...field} 
+                          rows={4}
                         />
                       </FormControl>
+                      <FormDescription>
+                        The more details you provide, the better ad suggestions we can generate.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                
                 <FormField
                   control={objectiveForm.control}
                   name="targetAudience"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Target Audience</FormLabel>
+                      <FormLabel>Who is your target audience?</FormLabel>
                       <FormControl>
                         <Textarea 
-                          placeholder="Describe your ideal customers (age, interests, location, etc.)" 
-                          className="min-h-24"
+                          placeholder="e.g., Women aged 25-40 living in urban areas, interested in sustainable fashion and ethical shopping..." 
                           {...field} 
+                          rows={4}
                         />
                       </FormControl>
+                      <FormDescription>
+                        Include demographics, interests, behaviors, and any other relevant details.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     control={objectiveForm.control}
                     name="budget"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Budget</FormLabel>
-                        <FormControl>
-                          <Input placeholder="$50 per day" {...field} />
-                        </FormControl>
+                        <FormLabel>What's your monthly advertising budget?</FormLabel>
+                        <Select 
+                          onValueChange={field.onChange} 
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select budget range" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Under $500">Under $500</SelectItem>
+                            <SelectItem value="$500 - $1,000">$500 - $1,000</SelectItem>
+                            <SelectItem value="$1,000 - $2,500">$1,000 - $2,500</SelectItem>
+                            <SelectItem value="$2,500 - $5,000">$2,500 - $5,000</SelectItem>
+                            <SelectItem value="$5,000 - $10,000">$5,000 - $10,000</SelectItem>
+                            <SelectItem value="$10,000+">$10,000+</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                  
                   <FormField
                     control={objectiveForm.control}
                     name="duration"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Campaign Duration</FormLabel>
-                        <FormControl>
-                          <Input placeholder="30 days" {...field} />
-                        </FormControl>
+                        <FormLabel>How long do you plan to run your campaigns?</FormLabel>
+                        <Select 
+                          onValueChange={field.onChange} 
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select duration" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="1-2 weeks">1-2 weeks</SelectItem>
+                            <SelectItem value="1 month">1 month</SelectItem>
+                            <SelectItem value="3 months">3 months</SelectItem>
+                            <SelectItem value="6 months">6 months</SelectItem>
+                            <SelectItem value="12 months">12 months</SelectItem>
+                            <SelectItem value="Ongoing">Ongoing</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
-                <div className="pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mr-2"
-                    onClick={() => setStep("connect")}
-                  >
-                    Back
-                  </Button>
-                  <Button 
-                    type="submit"
-                    disabled={creatingObjective}
-                  >
-                    {creatingObjective ? "Saving..." : "Continue"}
-                  </Button>
-                </div>
+                
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? "Saving..." : "Continue to Meta Account Setup"}
+                </Button>
               </form>
             </Form>
-          </div>
-        )}
-        
-        {step === "setup" && (
-          <div className="bg-gray-50 p-6 rounded-lg">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">You're Almost Ready!</h3>
-            <p className="text-gray-600 mb-6">
-              Here's what will happen next:
-            </p>
-            
-            <div className="space-y-4 mb-6">
-              <div className="flex items-start">
-                <div className="flex-shrink-0 mt-0.5">
-                  <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white text-sm">
-                    1
-                  </span>
-                </div>
-                <div className="ml-4">
-                  <h4 className="text-base font-medium text-gray-900">Generate AI Ad Suggestions</h4>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Our AI will analyze your objectives and create custom ad suggestions tailored to your business.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-start">
-                <div className="flex-shrink-0 mt-0.5">
-                  <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white text-sm">
-                    2
-                  </span>
-                </div>
-                <div className="ml-4">
-                  <h4 className="text-base font-medium text-gray-900">Launch Your Campaigns</h4>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Review, edit, and deploy your AI-generated ads directly to your Meta ad account with just a few clicks.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-start">
-                <div className="flex-shrink-0 mt-0.5">
-                  <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white text-sm">
-                    3
-                  </span>
-                </div>
-                <div className="ml-4">
-                  <h4 className="text-base font-medium text-gray-900">Track and Optimize</h4>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Monitor your campaign performance and receive AI-powered optimization suggestions to improve results.
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="mr-2"
-                onClick={() => setStep("objectives")}
-              >
-                Back
-              </Button>
-              <Button 
-                onClick={handleSetupComplete}
-                disabled={completingOnboarding}
-              >
-                {completingOnboarding ? "Finalizing Setup..." : "Complete Setup"}
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          </CardContent>
+        </Card>
+      )}
+      
+      {step === 2 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Connect your Meta Advertising Account</CardTitle>
+            <CardDescription>
+              Connect to an existing Meta Ad Account or create a new one to manage your ads.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MetaAccountSetup onSuccess={handleMetaAccountSetupSuccess} />
+          </CardContent>
+          <CardFooter className="flex flex-col items-start">
+            <Button 
+              variant="outline" 
+              onClick={() => setStep(1)} 
+              className="mt-4"
+            >
+              Back to Business Objective
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
+    </div>
   );
 }

@@ -1,6 +1,5 @@
 import { apiRequest } from "./queryClient";
 
-// Ad suggestion interface
 export interface AdSuggestion {
   id: number;
   userId: number;
@@ -15,7 +14,6 @@ export interface AdSuggestion {
   createdAt: string;
 }
 
-// Parsed target audience interface
 export interface TargetAudienceGroup {
   name: string;
   description: string;
@@ -25,7 +23,6 @@ export interface ParsedAdSuggestion extends Omit<AdSuggestion, 'targetAudience'>
   targetAudience: TargetAudienceGroup[];
 }
 
-// Optimization suggestion interface
 export interface OptimizationSuggestion {
   id: number;
   userId: number;
@@ -37,42 +34,47 @@ export interface OptimizationSuggestion {
   createdAt: string;
 }
 
-// Parse the target audience JSON string
+// Helper function to parse target audience string into array of objects
 export function parseTargetAudience(targetAudienceStr: string): TargetAudienceGroup[] {
   try {
+    if (!targetAudienceStr) return [];
+    
+    // If already an array, assume it's already parsed
+    if (Array.isArray(targetAudienceStr)) {
+      return targetAudienceStr as TargetAudienceGroup[];
+    }
+    
+    // Otherwise parse the JSON string
     return JSON.parse(targetAudienceStr);
   } catch (error) {
     console.error("Error parsing target audience:", error);
-    return [];
+    // Return as a single target audience item if parsing fails
+    return [{
+      name: "General Audience",
+      description: targetAudienceStr || "No specific targeting defined"
+    }];
   }
 }
 
-// Generate ad suggestions
+// Generate ad suggestions for a specific objective
 export async function generateAdSuggestions(objectiveId: number, count: number = 2) {
-  try {
-    const { data } = await apiRequest<AdSuggestion[]>('/api/suggestions/generate', {
-      method: 'POST',
-      body: JSON.stringify({ objectiveId, count })
-    });
-    
-    return data;
-  } catch (error) {
-    console.error("Error generating ad suggestions:", error);
-    throw error;
-  }
+  const { data } = await apiRequest("/api/suggestions/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      objectiveId,
+      count
+    })
+  });
+  
+  return data;
 }
 
-// Generate optimization suggestions
+// Generate optimization suggestions for a campaign
 export async function generateOptimizationSuggestions(campaignId: number, count: number = 3) {
-  try {
-    const { data } = await apiRequest<OptimizationSuggestion[]>(`/api/campaigns/${campaignId}/optimize`, {
-      method: 'POST',
-      body: JSON.stringify({ count })
-    });
-    
-    return data;
-  } catch (error) {
-    console.error("Error generating optimization suggestions:", error);
-    throw error;
-  }
+  const { data } = await apiRequest(`/api/campaigns/${campaignId}/optimize`, {
+    method: "POST",
+    body: JSON.stringify({ count })
+  });
+  
+  return data;
 }
