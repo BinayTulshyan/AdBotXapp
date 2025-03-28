@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AdPerformanceMetric } from "../../../shared/schema";
+import { AdPerformanceMetric } from "@/types";
 
 interface CampaignPerformanceTableProps {
   campaigns: {

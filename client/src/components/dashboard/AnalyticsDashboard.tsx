@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AdPerformanceMetric } from '../../../shared/schema';
+import { AdPerformanceMetric } from '@/types';
 import { PerformanceChart } from './PerformanceChart';
 import { PerformanceMetricsCard } from './PerformanceMetricsCard';
 import { CampaignPerformanceTable } from './CampaignPerformanceTable';

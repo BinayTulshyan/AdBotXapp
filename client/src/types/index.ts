@@ -1,53 +1,14 @@
+// Common types to be used across the client
+
 export interface User {
   id: number;
   username: string;
-  businessName: string;
   email: string;
-  onboardingComplete: boolean;
-  metaAdAccountConnected: boolean;
+  businessName: string;
+  metaAccessToken?: string;
   metaAdAccountId?: string;
-}
-
-export interface AdObjective {
-  id: number;
-  userId: number;
-  objective: string;
-  description: string;
-  targetAudience: string;
-  budget: string;
-  duration: string;
-}
-
-export interface AdSuggestion {
-  id: number;
-  userId: number;
-  objectiveId?: number;
-  title: string;
-  headline: string;
-  primaryText: string;
-  callToAction: string;
-  targetAudience: string; // JSON string of array of { name, description }
-  adType: string;
+  onboardingComplete: boolean;
   createdAt: string;
-  deployed: boolean;
-}
-
-export interface ParsedTargetAudience {
-  name: string;
-  description: string;
-}
-
-export interface AdCampaign {
-  id: number;
-  userId: number;
-  suggestedAdId?: number;
-  campaignName: string;
-  metaCampaignId?: string;
-  status: string;
-  budget: string;
-  startDate: string;
-  endDate?: string;
-  objective: string;
 }
 
 export interface AdPerformanceMetric {
@@ -59,54 +20,51 @@ export interface AdPerformanceMetric {
   ctr: string;
   cpc: string;
   spend: string;
-  conversions?: number;
-  costPerConversion?: string;
-  roas?: string;
+  conversions: number | null;
+  costPerConversion: string | null;
+  roas: string | null;
+}
+
+export interface TargetAudienceGroup {
+  name: string;
+  description: string;
+}
+
+export interface AdSuggestion {
+  id: number;
+  userId: number;
+  objectiveId: number;
+  title: string;
+  headline: string;
+  primaryText: string;
+  callToAction: string;
+  targetAudience: string;
+  adType: string;
+  deployed: boolean;
+  createdAt: string;
+}
+
+export interface AdCampaign {
+  id: number;
+  userId: number;
+  objective: string;
+  budget: string;
+  suggestedAdId: number | null;
+  campaignName: string;
+  metaCampaignId: string | null;
+  status: string;
+  startDate: string;
+  endDate: string | null;
 }
 
 export interface OptimizationSuggestion {
   id: number;
   userId: number;
-  campaignId?: number;
+  campaignId: number;
   title: string;
   description: string;
   type: "warning" | "success" | "error";
-  status: "pending" | "applied" | "dismissed";
+  applied: boolean;
+  status?: string;
   createdAt: string;
-}
-
-export type OnboardingStep = "connect" | "objectives" | "setup";
-
-export interface AuthFormData {
-  username: string;
-  password: string;
-  businessName?: string;
-  email?: string;
-}
-
-export interface MetaAccountFormData {
-  accountId?: string;
-  businessName?: string;
-  email?: string;
-  country?: string;
-  currency?: string;
-  timezone?: string;
-}
-
-export interface AdObjectiveFormData {
-  objective: string;
-  description: string;
-  targetAudience: string;
-  budget: string;
-  duration: string;
-}
-
-export interface AdCampaignFormData {
-  suggestedAdId?: number;
-  campaignName: string;
-  status: string;
-  budget: string;
-  startDate: string;
-  endDate?: string;
-  objective: string;
 }

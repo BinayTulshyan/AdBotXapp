@@ -4,7 +4,7 @@ import { User, AdSuggestion, OptimizationSuggestion, AdCampaign, AdPerformanceMe
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import PerformanceCard from "./PerformanceCard";
-import PerformanceChart from "./PerformanceChart";
+import { PerformanceChart } from "./PerformanceChart";
 import OptimizationSuggestionComponent from "./OptimizationSuggestion";
 import AdSuggestionComponent from "../ads/AdSuggestion";
 
@@ -48,8 +48,8 @@ export default function Dashboard() {
   const activeCampaignsCount = activeCampaignIds.length;
   const avgRoas = performanceMetrics?.[0]?.roas || "0.0x";
 
-  // Filter to get only pending optimization suggestions
-  const pendingOptimizations = optimizations?.filter(o => o.status === "pending") || [];
+  // Filter to get only pending optimization suggestions that aren't applied
+  const pendingOptimizations = optimizations?.filter(o => !o.applied) || [];
 
   // Filter to get non-deployed ad suggestions
   const nonDeployedSuggestions = adSuggestions?.filter(s => !s.deployed) || [];
@@ -190,7 +190,12 @@ export default function Dashboard() {
           {metricsLoading ? (
             <Skeleton className="h-64 w-full rounded-lg" />
           ) : performanceMetrics && performanceMetrics.length > 0 ? (
-            <PerformanceChart />
+            <PerformanceChart 
+              data={performanceMetrics}
+              dataKeys={["impressions", "clicks"]}
+              xAxisKey="date"
+              type="area"
+            />
           ) : (
             <div className="bg-gray-100 rounded-lg h-64 flex items-center justify-center">
               <p className="text-gray-500 flex flex-col items-center">
