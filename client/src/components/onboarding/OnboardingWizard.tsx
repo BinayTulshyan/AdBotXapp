@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -13,6 +13,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
 import { MetaAccountSetup } from "@/components/meta";
 import { useLocation } from "wouter";
+import { AnimatedTutorial } from "./tutorial/AnimatedTutorial";
+import { TutorialButton } from "./tutorial/TutorialButton";
+import { PlayCircle } from "lucide-react";
 
 // Step 1: Business Objective
 const objectiveSchema = z.object({
@@ -33,6 +36,7 @@ export function OnboardingWizard() {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [objectiveData, setObjectiveData] = useState<ObjectiveFormValues | null>(null);
+  const [showTutorial, setShowTutorial] = useState(true); // Auto-show tutorial on first load
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
@@ -93,10 +97,33 @@ export function OnboardingWizard() {
     setLocation("/dashboard");
   };
 
+  const handleTutorialComplete = () => {
+    setShowTutorial(false);
+    localStorage.setItem('adsy_tutorial_viewed', 'true');
+  };
+
+  // Check if the tutorial has been viewed before
+  useEffect(() => {
+    const tutorialViewed = localStorage.getItem('adsy_tutorial_viewed');
+    if (tutorialViewed === 'true') {
+      setShowTutorial(false);
+    }
+  }, []);
+
   return (
     <div className="container max-w-4xl mx-auto py-10">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Welcome to Adsy</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold mb-2">Welcome to Adsy</h1>
+          
+          <TutorialButton 
+            label="Restart Tutorial" 
+            icon="play"
+            tutorialCompleteCallback={handleTutorialComplete}
+            className="bg-gradient-to-r from-primary to-primary/80 text-primary-foreground hover:from-primary/90 hover:to-primary/70"
+          />
+        </div>
+        
         <p className="text-muted-foreground">Let's get your account set up in just a few steps.</p>
         
         <div className="flex items-center mt-6">
@@ -286,6 +313,15 @@ export function OnboardingWizard() {
           </CardFooter>
         </Card>
       )}
+
+      {/* Animated Tutorial */}
+      <AnimatedTutorial
+        isOpen={showTutorial}
+        onClose={() => setShowTutorial(false)}
+        onComplete={handleTutorialComplete}
+        autoStart={true}
+        delayStart={1000}
+      />
     </div>
   );
 }

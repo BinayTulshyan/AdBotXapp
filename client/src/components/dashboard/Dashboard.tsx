@@ -7,6 +7,7 @@ import PerformanceCard from "./PerformanceCard";
 import { PerformanceChart } from "./PerformanceChart";
 import OptimizationSuggestionComponent from "./OptimizationSuggestion";
 import AdSuggestionComponent from "../ads/AdSuggestion";
+import { TutorialButton } from "../onboarding/tutorial/TutorialButton";
 
 export default function Dashboard() {
   const [dateRange, setDateRange] = useState("7");
@@ -60,6 +61,11 @@ export default function Dashboard() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <h1 className="text-2xl font-bold text-gray-800 mb-2 md:mb-0">Dashboard</h1>
           <div className="flex space-x-2">
+            <TutorialButton 
+              label="How It Works" 
+              icon="help"
+              className="bg-gradient-to-r from-primary/90 to-primary/70 text-primary-foreground hover:from-primary/80 hover:to-primary/60"
+            />
             <Button 
               variant="outline" 
               onClick={() => setDateRange("7")}
