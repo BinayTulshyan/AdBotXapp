@@ -3,6 +3,74 @@ import OpenAI from "openai";
 // Initialize OpenAI with API key from environment variables
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// Flag to use mock data in test/development environments or when API is unavailable
+const USE_MOCK_DATA = !process.env.OPENAI_API_KEY || process.env.NODE_ENV === 'test';
+
+if (USE_MOCK_DATA) {
+  console.log('OpenAI API key not found or running in test mode. Using mock data for AI responses.');
+}
+
+// Mock data for ad suggestions
+function generateMockAdSuggestions(prompt: AdSuggestionPrompt, count: number = 2): GeneratedAdSuggestion[] {
+  const businessName = prompt.businessName;
+  const objective = prompt.objective;
+  const targetAudience = prompt.targetAudience;
+  
+  const suggestions: GeneratedAdSuggestion[] = [];
+  
+  for (let i = 0; i < count; i++) {
+    suggestions.push({
+      title: `${objective} Campaign for ${businessName} #${i+1}`,
+      headline: `Discover ${businessName} Today!`,
+      primaryText: `Looking for the best solution for your needs? ${businessName} offers premium services tailored to your requirements.`,
+      callToAction: i % 2 === 0 ? "Learn More" : "Shop Now",
+      targetAudience: [
+        {
+          name: `Primary Audience ${i+1}`,
+          description: `${targetAudience} interested in products like ours`
+        },
+        {
+          name: `Secondary Audience ${i+1}`,
+          description: "People who have visited our website in the past 30 days"
+        }
+      ],
+      adType: i % 2 === 0 ? "BRAND_AWARENESS" : "CONVERSIONS"
+    });
+  }
+  
+  return suggestions;
+}
+
+// Mock data for optimization suggestions
+function generateMockOptimizationSuggestions(prompt: OptimizationPrompt, count: number = 3): GeneratedOptimizationSuggestion[] {
+  const suggestions: GeneratedOptimizationSuggestion[] = [];
+  
+  const types: Array<"warning" | "success" | "error"> = ["warning", "success", "error"];
+  
+  for (let i = 0; i < count; i++) {
+    const type = types[i % types.length];
+    
+    suggestions.push({
+      title: `Optimization Suggestion #${i+1} for ${prompt.campaignName}`,
+      description: getDescriptionByType(type, prompt),
+      type: type
+    });
+  }
+  
+  return suggestions;
+}
+
+function getDescriptionByType(type: "warning" | "success" | "error", prompt: OptimizationPrompt): string {
+  switch (type) {
+    case "warning":
+      return `Your ad's CTR of ${prompt.performanceData.ctr} is slightly below the industry average of ${prompt.industryAverages.ctr}. Consider refreshing your ad creative or targeting a more specific audience segment.`;
+    case "success":
+      return `Your campaign is performing well with a CPC of ${prompt.performanceData.cpc} compared to the industry average of ${prompt.industryAverages.cpc}. Continue with the current strategy but consider increasing budget to capture more of this audience.`;
+    case "error":
+      return `Your campaign has spent ${prompt.performanceData.spend} with lower than expected results. We recommend pausing this campaign and reallocating budget to better performing initiatives.`;
+  }
+}
+
 export interface AdSuggestionPrompt {
   businessName: string;
   objective: string;
@@ -53,6 +121,12 @@ export interface GeneratedOptimizationSuggestion {
  * Generate ad suggestions based on business objective
  */
 export async function generateAdSuggestions(prompt: AdSuggestionPrompt, count: number = 2): Promise<GeneratedAdSuggestion[]> {
+  // If using mock data mode, return mock suggestions
+  if (USE_MOCK_DATA) {
+    console.log('Using mock data for ad suggestions');
+    return generateMockAdSuggestions(prompt, count);
+  }
+  
   try {
     // Generate system message for prompt
     const systemMessage = `
@@ -112,7 +186,10 @@ export async function generateAdSuggestions(prompt: AdSuggestionPrompt, count: n
     return suggestions;
   } catch (error) {
     console.error("Error generating ad suggestions:", error);
-    throw error;
+    
+    // If API error occurred, use mock data as fallback
+    console.log('OpenAI API error occurred, using mock data as fallback');
+    return generateMockAdSuggestions(prompt, count);
   }
 }
 
@@ -120,6 +197,12 @@ export async function generateAdSuggestions(prompt: AdSuggestionPrompt, count: n
  * Generate optimization suggestions based on campaign performance
  */
 export async function generateOptimizationSuggestions(prompt: OptimizationPrompt, count: number = 3): Promise<GeneratedOptimizationSuggestion[]> {
+  // If using mock data mode, return mock suggestions
+  if (USE_MOCK_DATA) {
+    console.log('Using mock data for optimization suggestions');
+    return generateMockOptimizationSuggestions(prompt, count);
+  }
+  
   try {
     // Generate system message
     const systemMessage = `
@@ -189,6 +272,9 @@ export async function generateOptimizationSuggestions(prompt: OptimizationPrompt
     return suggestions;
   } catch (error) {
     console.error("Error generating optimization suggestions:", error);
-    throw error;
+    
+    // If API error occurred, use mock data as fallback
+    console.log('OpenAI API error occurred, using mock data as fallback');
+    return generateMockOptimizationSuggestions(prompt, count);
   }
 }

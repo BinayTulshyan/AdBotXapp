@@ -59,7 +59,16 @@ export default function LoginForm() {
   // Login mutation
   const { mutate: login, isPending: isLoggingIn } = useMutation({
     mutationFn: async (data: AuthFormData) => {
-      return apiRequest("POST", "/api/auth/login", data);
+      try {
+        const { data: responseData } = await apiRequest("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify(data)
+        });
+        return responseData;
+      } catch (error) {
+        console.error("Login error:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -70,10 +79,13 @@ export default function LoginForm() {
         duration: 3000,
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Invalid username or password. Please try again.";
       toast({
         title: "Login failed",
-        description: "Invalid username or password. Please try again.",
+        description: errorMessage,
         variant: "destructive",
         duration: 3000,
       });
@@ -81,11 +93,26 @@ export default function LoginForm() {
   });
 
   // Register mutation
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
   const { mutate: register, isPending: isRegistering } = useMutation({
     mutationFn: async (data: AuthFormData) => {
-      return apiRequest("POST", "/api/auth/register", data);
+      try {
+        const { data: responseData } = await apiRequest("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify(data)
+        });
+        return responseData;
+      } catch (error) {
+        console.error("Registration error:", error);
+        const errorMessage = error instanceof Error 
+          ? error.message 
+          : "An unknown error occurred";
+        setRegistrationError(errorMessage);
+        throw error;
+      }
     },
     onSuccess: () => {
+      setRegistrationError(null);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setLocation("/onboarding");
       toast({
@@ -94,12 +121,15 @@ export default function LoginForm() {
         duration: 3000,
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Registration failed. Please try again.";
       toast({
         title: "Registration failed",
-        description: "Username or email already exists. Please try different credentials.",
+        description: errorMessage,
         variant: "destructive",
-        duration: 3000,
+        duration: 5000,
       });
     }
   });
@@ -176,6 +206,11 @@ export default function LoginForm() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {registrationError && (
+              <div className="bg-destructive/15 text-destructive p-3 rounded-md mb-4 text-sm">
+                <strong>Registration Error:</strong> {registrationError}
+              </div>
+            )}
             <Form {...registerForm}>
               <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
                 <FormField

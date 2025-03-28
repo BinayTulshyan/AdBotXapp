@@ -35,6 +35,8 @@ export interface IStorage {
   // Ad Performance Metrics methods
   createAdPerformanceMetric(metric: InsertAdPerformanceMetric): Promise<AdPerformanceMetric>;
   getAdPerformanceMetricsByCampaignId(campaignId: number): Promise<AdPerformanceMetric[]>;
+  getPerformanceMetricsByDateRange(campaignId: number, startDate: Date, endDate: Date): Promise<AdPerformanceMetric[]>;
+  getPerformanceMetricsByUserId(userId: number, period?: string): Promise<Record<number, AdPerformanceMetric[]>>;
   
   // Optimization Suggestion methods
   createOptimizationSuggestion(suggestion: InsertOptimizationSuggestion): Promise<OptimizationSuggestion>;
@@ -207,6 +209,50 @@ export class MemStorage implements IStorage {
     return Array.from(this.adPerformanceMetrics.values()).filter(
       metric => metric.campaignId === campaignId
     );
+  }
+
+  async getPerformanceMetricsByDateRange(campaignId: number, startDate: Date, endDate: Date): Promise<AdPerformanceMetric[]> {
+    return Array.from(this.adPerformanceMetrics.values()).filter(
+      metric => {
+        const metricDate = new Date(metric.date);
+        return metric.campaignId === campaignId && 
+               metricDate >= startDate && 
+               metricDate <= endDate;
+      }
+    ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }
+
+  async getPerformanceMetricsByUserId(userId: number, period?: string): Promise<Record<number, AdPerformanceMetric[]>> {
+    // Get all campaigns for the user
+    const campaigns = await this.getAdCampaignsByUserId(userId);
+    
+    // Determine date range based on period
+    const endDate = new Date();
+    let startDate = new Date();
+    
+    if (period === '7d') {
+      startDate.setDate(endDate.getDate() - 7);
+    } else if (period === '30d') {
+      startDate.setDate(endDate.getDate() - 30);
+    } else if (period === '90d') {
+      startDate.setDate(endDate.getDate() - 90);
+    } else {
+      // Default to all time (or reasonable default like 1 year)
+      startDate.setFullYear(endDate.getFullYear() - 1);
+    }
+    
+    // Create a map of campaign IDs to their performance metrics within the date range
+    const metricsMap: Record<number, AdPerformanceMetric[]> = {};
+    
+    for (const campaign of campaigns) {
+      metricsMap[campaign.id] = await this.getPerformanceMetricsByDateRange(
+        campaign.id, 
+        campaign.startDate > startDate ? new Date(campaign.startDate) : startDate,
+        campaign.endDate && new Date(campaign.endDate) < endDate ? new Date(campaign.endDate) : endDate
+      );
+    }
+    
+    return metricsMap;
   }
 
   // Optimization Suggestions methods

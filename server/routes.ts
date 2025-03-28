@@ -53,23 +53,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
+      console.log("Registration request received:", req.body);
+      
+      try {
+        const userInput = insertUserSchema.parse(req.body);
+        console.log("Parsed user input:", userInput);
+        
+        console.log("Registration attempt with username:", userInput.username);
+        
+        // Check if user already exists
+        const existingUser = await storage.getUserByUsername(userInput.username);
+        console.log("Existing user check result:", existingUser);
+        
+        if (existingUser) {
+          console.log("Rejecting registration: Username already exists");
+          return res.status(400).json({ message: "Username already exists" });
+        }
+        
+        const existingEmail = await storage.getUserByEmail(userInput.email);
+        console.log("Existing email check result:", existingEmail);
+        
+        if (existingEmail) {
+          console.log("Rejecting registration: Email already exists");
+          return res.status(400).json({ message: "Email already exists" });
+        }
+      } catch (parseError) {
+        console.error("Error parsing registration data:", parseError);
+        return res.status(400).json({ message: "Invalid input data", error: parseError });
+      }
+      
+      // Need to parse userInput again here since it's in a different scope
       const userInput = insertUserSchema.parse(req.body);
-      
-      console.log("Registration attempt with username:", userInput.username);
-      
-      // Check if user already exists
-      const existingUser = await storage.getUserByUsername(userInput.username);
-      console.log("Existing user check result:", existingUser);
-      
-      if (existingUser) {
-        return res.status(400).json({ message: "Username already exists" });
-      }
-      
-      const existingEmail = await storage.getUserByEmail(userInput.email);
-      if (existingEmail) {
-        return res.status(400).json({ message: "Email already exists" });
-      }
-      
+      console.log("Creating user with data:", userInput);
       const user = await storage.createUser(userInput);
       
       // Store user data in session
@@ -370,27 +385,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         duration: objective.duration
       };
       
-      const suggestions = await generateAdSuggestions(prompt, count || 2);
-      
-      // Save the generated suggestions to the database
-      const savedSuggestions = await Promise.all(
-        suggestions.map(suggestion => 
-          storage.createAdSuggestion({
-            userId: req.session.userId,
-            objectiveId: objective.id,
-            title: suggestion.title,
-            headline: suggestion.headline,
-            primaryText: suggestion.primaryText,
-            callToAction: suggestion.callToAction,
-            targetAudience: JSON.stringify(suggestion.targetAudience),
-            adType: suggestion.adType
-          })
-        )
-      );
-      
-      res.status(201).json(savedSuggestions);
+      try {
+        const suggestions = await generateAdSuggestions(prompt, count || 2);
+        
+        // Save the generated suggestions to the database
+        const savedSuggestions = await Promise.all(
+          suggestions.map(suggestion => 
+            storage.createAdSuggestion({
+              userId: req.session.userId,
+              objectiveId: objective.id,
+              title: suggestion.title,
+              headline: suggestion.headline,
+              primaryText: suggestion.primaryText,
+              callToAction: suggestion.callToAction,
+              targetAudience: JSON.stringify(suggestion.targetAudience),
+              adType: suggestion.adType
+            })
+          )
+        );
+        
+        res.status(201).json(savedSuggestions);
+      } catch (error) {
+        console.error("Error generating ad suggestions:", error);
+        res.status(500).json({ message: "Failed to generate ad suggestions" });
+      }
     } catch (error) {
-      res.status(500).json({ message: "Failed to generate ad suggestions" });
+      console.error("Error in suggestions/generate endpoint:", error);
+      res.status(500).json({ message: "Failed to process request" });
     }
   });
 
@@ -510,6 +531,195 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to get performance metrics" });
     }
   });
+  
+  // Historical performance data for a specific campaign
+  app.get("/api/campaigns/:campaignId/performance/history", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      const campaign = await storage.getAdCampaignById(campaignId);
+      
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+      
+      if (campaign.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Unauthorized access to campaign" });
+      }
+      
+      // Parse date range from query parameters
+      const startDateParam = req.query.startDate as string | undefined;
+      const endDateParam = req.query.endDate as string | undefined;
+      const startDate = startDateParam ? new Date(startDateParam) : new Date(campaign.startDate);
+      const endDate = endDateParam ? new Date(endDateParam) : (campaign.endDate ? new Date(campaign.endDate) : new Date());
+      
+      // Get historical performance metrics
+      const metrics = await storage.getPerformanceMetricsByDateRange(campaignId, startDate, endDate);
+      
+      // If no historical data exists and campaign has a Meta ID, fetch daily data
+      if (metrics.length === 0 && campaign.metaCampaignId && campaign.startDate) {
+        // Initialize array for daily metrics
+        const dailyMetrics: AdPerformanceMetric[] = [];
+        
+        // Create a temporary date for looping
+        const currentDate = new Date(startDate);
+        currentDate.setHours(0, 0, 0, 0);
+        
+        // Loop through each day from start to end
+        while (currentDate <= endDate) {
+          // Create end of day
+          const dayEnd = new Date(currentDate);
+          dayEnd.setHours(23, 59, 59, 999);
+          
+          // Fetch data for this day from Meta
+          const dailyInsights = await metaAdsAPI.getCampaignInsights(
+            campaign.metaCampaignId,
+            currentDate,
+            dayEnd
+          );
+          
+          if (dailyInsights) {
+            // Store this day's metrics
+            const metric = await storage.createAdPerformanceMetric({
+              campaignId,
+              date: new Date(currentDate),
+              impressions: dailyInsights.impressions,
+              clicks: dailyInsights.clicks,
+              ctr: dailyInsights.ctr,
+              cpc: dailyInsights.cpc,
+              spend: dailyInsights.spend,
+              conversions: dailyInsights.conversions,
+              costPerConversion: dailyInsights.cost_per_conversion,
+              roas: dailyInsights.return_on_ad_spend
+            });
+            
+            dailyMetrics.push(metric);
+          }
+          
+          // Move to next day
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        // Return the generated daily metrics
+        return res.status(200).json(dailyMetrics);
+      }
+      
+      res.status(200).json(metrics);
+    } catch (error) {
+      console.error("Error fetching historical performance:", error);
+      res.status(500).json({ message: "Failed to fetch historical campaign performance" });
+    }
+  });
+  
+  // Analytics data for all campaigns of a user
+  app.get("/api/analytics", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const period = req.query.period as string | undefined;
+      
+      // Get performance metrics for all campaigns
+      const metricsMap = await storage.getPerformanceMetricsByUserId(userId, period);
+      
+      // Get all user campaigns for reference
+      const campaigns = await storage.getAdCampaignsByUserId(userId);
+      
+      // Format the response data with campaign info
+      const analytics = {
+        campaigns: campaigns.map(campaign => ({
+          id: campaign.id,
+          name: campaign.campaignName,
+          objective: campaign.objective,
+          startDate: campaign.startDate,
+          endDate: campaign.endDate,
+          status: campaign.status,
+          metrics: metricsMap[campaign.id] || []
+        })),
+        // Add aggregated metrics
+        aggregated: calculateAggregatedMetrics(metricsMap)
+      };
+      
+      res.status(200).json(analytics);
+    } catch (error) {
+      console.error("Error fetching analytics data:", error);
+      res.status(500).json({ message: "Failed to fetch analytics data" });
+    }
+  });
+  
+  // Helper function to calculate aggregated metrics
+  function calculateAggregatedMetrics(metricsMap: Record<number, AdPerformanceMetric[]>) {
+    // Initialize aggregated values
+    let totalImpressions = 0;
+    let totalClicks = 0;
+    let totalSpend = 0;
+    let totalConversions = 0;
+    
+    // Count for averages
+    let ctrDataPoints = 0;
+    let cpcDataPoints = 0;
+    let conversionRateDataPoints = 0;
+    let costPerConversionDataPoints = 0;
+    let roasDataPoints = 0;
+    
+    // Sum for averages
+    let ctrSum = 0;
+    let cpcSum = 0;
+    let costPerConversionSum = 0;
+    let roasSum = 0;
+    
+    // Process all metrics
+    Object.values(metricsMap).forEach(campaignMetrics => {
+      campaignMetrics.forEach(metric => {
+        // Add to totals
+        totalImpressions += metric.impressions;
+        totalClicks += metric.clicks;
+        totalSpend += parseFloat(metric.spend.replace(/[^\d.-]/g, '') || '0');
+        if (metric.conversions) {
+          totalConversions += metric.conversions;
+        }
+        
+        // Add to averages
+        if (metric.ctr) {
+          ctrSum += parseFloat(metric.ctr.replace(/[^\d.-]/g, '') || '0');
+          ctrDataPoints++;
+        }
+        
+        if (metric.cpc) {
+          cpcSum += parseFloat(metric.cpc.replace(/[^\d.-]/g, '') || '0');
+          cpcDataPoints++;
+        }
+        
+        if (metric.costPerConversion) {
+          costPerConversionSum += parseFloat(metric.costPerConversion.replace(/[^\d.-]/g, '') || '0');
+          costPerConversionDataPoints++;
+        }
+        
+        if (metric.roas) {
+          roasSum += parseFloat(metric.roas.replace(/[^\d.-]/g, '') || '0');
+          roasDataPoints++;
+        }
+      });
+    });
+    
+    // Calculate averages
+    const avgCTR = ctrDataPoints > 0 ? (ctrSum / ctrDataPoints).toFixed(2) + '%' : '0%';
+    const avgCPC = cpcDataPoints > 0 ? '$' + (cpcSum / cpcDataPoints).toFixed(2) : '$0';
+    const conversionRate = totalClicks > 0 ? ((totalConversions / totalClicks) * 100).toFixed(2) + '%' : '0%';
+    const avgCostPerConversion = costPerConversionDataPoints > 0 
+      ? '$' + (costPerConversionSum / costPerConversionDataPoints).toFixed(2) 
+      : '$0';
+    const avgROAS = roasDataPoints > 0 ? (roasSum / roasDataPoints).toFixed(1) + 'x' : '0x';
+    
+    return {
+      impressions: totalImpressions,
+      clicks: totalClicks,
+      spend: '$' + totalSpend.toFixed(2),
+      conversions: totalConversions,
+      ctr: avgCTR,
+      cpc: avgCPC,
+      conversionRate,
+      costPerConversion: avgCostPerConversion,
+      roas: avgROAS
+    };
+  }
 
   // Optimization Suggestions routes
   app.post("/api/campaigns/:campaignId/optimize", isAuthenticated, async (req: Request, res: Response) => {
