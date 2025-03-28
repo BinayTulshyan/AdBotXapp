@@ -15,7 +15,9 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const handleLogout = async () => {
     try {
-      await apiRequest("POST", "/api/auth/logout");
+      await apiRequest("/api/auth/logout", {
+        method: "POST"
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({
         title: "Logged out successfully",
@@ -63,6 +65,18 @@ export default function Sidebar({ user }: SidebarProps) {
           )}>
             <span className="material-icons mr-3">campaign</span>
             <span className="font-medium">Campaigns</span>
+          </a>
+        </Link>
+        
+        <Link href="/templates">
+          <a className={cn(
+            "flex items-center px-4 py-3 rounded-lg",
+            location === "/templates" 
+              ? "text-gray-700 bg-gray-100" 
+              : "text-gray-600 hover:bg-gray-100"
+          )}>
+            <span className="material-icons mr-3">category</span>
+            <span className="font-medium">Quick-Start Templates</span>
           </a>
         </Link>
         

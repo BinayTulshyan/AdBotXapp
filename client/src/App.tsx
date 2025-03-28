@@ -8,6 +8,7 @@ import Campaigns from "@/pages/campaigns";
 import Suggestions from "@/pages/suggestions";
 import Performance from "@/pages/performance";
 import Settings from "@/pages/settings";
+import Templates from "@/pages/templates";
 import AppShell from "@/components/layout/AppShell";
 import LoginForm from "@/components/auth/LoginForm";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,6 +88,11 @@ function App() {
       <Route path="/settings">
         <AppShell currentPage="Settings">
           <Settings />
+        </AppShell>
+      </Route>
+      <Route path="/templates">
+        <AppShell currentPage="Templates">
+          <Templates />
         </AppShell>
       </Route>
       <Route>
