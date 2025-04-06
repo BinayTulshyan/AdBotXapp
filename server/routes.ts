@@ -22,6 +22,18 @@ declare module "express-session" {
   }
 }
 
+interface SessionUser {
+  userId: number;
+}
+
+function getUserId(req: Request): number {
+  const userId = (req.session as any).userId;
+  if (!userId) {
+    throw new Error('User not authenticated');
+  }
+  return userId;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
@@ -256,6 +268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post("/api/meta/connect", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const { accountId } = req.body;
       if (!accountId) {
         return res.status(400).json({ message: "Account ID is required" });
@@ -266,8 +279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Failed to connect to Meta Ad Account" });
       }
       
-      // Update user with Meta Ad Account info
-      const updatedUser = await storage.updateUser(req.session.userId, {
+      const updatedUser = await storage.updateUser(userId, {
         metaAdAccountId: metaAccount.id,
         metaAdAccountConnected: true
       });
@@ -324,17 +336,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Ad Objective routes
   app.post("/api/objectives", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const objectiveInput = insertAdObjectiveSchema.parse({
         ...req.body,
-        userId: req.session.userId
+        userId
       });
       
       const objective = await storage.createAdObjective(objectiveInput);
       
       // If this is the first objective, mark onboarding as complete
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(userId);
       if (user && !user.onboardingComplete) {
-        await storage.updateUser(req.session.userId, { onboardingComplete: true });
+        await storage.updateUser(userId, { onboardingComplete: true });
       }
       
       res.status(201).json(objective);
@@ -349,7 +362,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/objectives", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const objectives = await storage.getAdObjectivesByUserId(req.session.userId);
+      const userId = getUserId(req);
+      const objectives = await storage.getAdObjectivesByUserId(userId);
       res.status(200).json(objectives);
     } catch (error) {
       res.status(500).json({ message: "Failed to get ad objectives" });
@@ -359,6 +373,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Ad Suggestion routes
   app.post("/api/suggestions/generate", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const { objectiveId, count } = req.body;
       if (!objectiveId) {
         return res.status(400).json({ message: "Objective ID is required" });
@@ -370,7 +385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Ad objective not found" });
       }
       
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -392,7 +407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const savedSuggestions = await Promise.all(
           suggestions.map(suggestion => 
             storage.createAdSuggestion({
-              userId: req.session.userId,
+              userId,
               objectiveId: objective.id,
               title: suggestion.title,
               headline: suggestion.headline,
@@ -417,7 +432,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/suggestions", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const suggestions = await storage.getAdSuggestionsByUserId(req.session.userId);
+      const userId = getUserId(req);
+      const suggestions = await storage.getAdSuggestionsByUserId(userId);
       res.status(200).json(suggestions);
     } catch (error) {
       res.status(500).json({ message: "Failed to get ad suggestions" });
@@ -427,13 +443,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Ad Campaign routes
   app.post("/api/campaigns", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const campaignInput = insertAdCampaignSchema.parse({
         ...req.body,
-        userId: req.session.userId
+        userId
       });
       
       // If user has Meta account connected, create the campaign on Meta
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(userId);
       if (user && user.metaAdAccountConnected && user.metaAdAccountId) {
         const startDate = new Date(campaignInput.startDate);
         const endDate = campaignInput.endDate ? new Date(campaignInput.endDate) : undefined;
@@ -472,7 +489,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/campaigns", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const campaigns = await storage.getAdCampaignsByUserId(req.session.userId);
+      const userId = getUserId(req);
+      const campaigns = await storage.getAdCampaignsByUserId(userId);
       res.status(200).json(campaigns);
     } catch (error) {
       res.status(500).json({ message: "Failed to get ad campaigns" });
@@ -482,6 +500,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Performance Metrics routes
   app.get("/api/campaigns/:campaignId/performance", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const campaignId = parseInt(req.params.campaignId);
       const campaign = await storage.getAdCampaignById(campaignId);
       
@@ -489,7 +508,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Campaign not found" });
       }
       
-      if (campaign.userId !== req.session.userId) {
+      if (campaign.userId !== userId) {
         return res.status(403).json({ message: "Unauthorized access to campaign" });
       }
       
@@ -535,6 +554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Historical performance data for a specific campaign
   app.get("/api/campaigns/:campaignId/performance/history", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const campaignId = parseInt(req.params.campaignId);
       const campaign = await storage.getAdCampaignById(campaignId);
       
@@ -542,7 +562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Campaign not found" });
       }
       
-      if (campaign.userId !== req.session.userId) {
+      if (campaign.userId !== userId) {
         return res.status(403).json({ message: "Unauthorized access to campaign" });
       }
       
@@ -613,7 +633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics data for all campaigns of a user
   app.get("/api/analytics", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const userId = req.session.userId!;
+      const userId = getUserId(req);
       const period = req.query.period as string | undefined;
       
       // Get performance metrics for all campaigns
@@ -724,6 +744,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Optimization Suggestions routes
   app.post("/api/campaigns/:campaignId/optimize", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const campaignId = parseInt(req.params.campaignId);
       const campaign = await storage.getAdCampaignById(campaignId);
       
@@ -731,7 +752,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Campaign not found" });
       }
       
-      if (campaign.userId !== req.session.userId) {
+      if (campaign.userId !== userId) {
         return res.status(403).json({ message: "Unauthorized access to campaign" });
       }
       
@@ -754,7 +775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get the user
-      const user = await storage.getUser(campaign.userId);
+      const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -791,7 +812,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const savedSuggestions = await Promise.all(
         suggestions.map(suggestion => 
           storage.createOptimizationSuggestion({
-            userId: campaign.userId,
+            userId,
             campaignId,
             title: suggestion.title,
             description: suggestion.description,
@@ -809,7 +830,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/suggestions/optimization", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const suggestions = await storage.getOptimizationSuggestionsByUserId(req.session.userId);
+      const userId = getUserId(req);
+      const suggestions = await storage.getOptimizationSuggestionsByUserId(userId);
       res.status(200).json(suggestions);
     } catch (error) {
       res.status(500).json({ message: "Failed to get optimization suggestions" });
@@ -818,6 +840,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/suggestions/optimization/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const suggestionId = parseInt(req.params.id);
       const { status } = req.body;
       
@@ -840,13 +863,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Onboarding routes
   app.patch("/api/user/onboarding", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const userId = getUserId(req);
       const { onboardingComplete } = req.body;
       
       if (typeof onboardingComplete !== "boolean") {
         return res.status(400).json({ message: "Invalid input. onboardingComplete must be a boolean" });
       }
       
-      const updatedUser = await storage.updateUser(req.session.userId, { onboardingComplete });
+      const updatedUser = await storage.updateUser(userId, { onboardingComplete });
       
       if (!updatedUser) {
         return res.status(404).json({ message: "User not found" });
